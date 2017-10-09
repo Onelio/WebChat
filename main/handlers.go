@@ -7,10 +7,11 @@ import (
 import (
 	"./templates"
 	"time"
+	"github.com/jcuga/golongpoll"
 )
 
 //Set Handlers for content requests
-func HandleHttpRequests() {
+func HandleHttpRequests(lpManager *golongpoll.LongpollManager) {
 
 	//!!!!__________GENERAL STYLES__________!!!!
 	//Home Page
@@ -20,9 +21,9 @@ func HandleHttpRequests() {
 	//Home Page
 	http.HandleFunc("/", templates.Index)
 	//Login Page
-	http.HandleFunc("/chat", Login)
+	http.HandleFunc("/chat", Login(lpManager))
 	//Logout Page
-	http.HandleFunc("/chat/logout", Logout)
+	http.HandleFunc("/chat/logout", Logout(lpManager))
 	//Chat Page
 	http.HandleFunc("/chat/main", Chat)
 
@@ -31,59 +32,68 @@ func HandleHttpRequests() {
 }
 
 //Login
-func Login(w http.ResponseWriter, r *http.Request) {
-	//Get username
-	user := r.URL.Query().Get("user")
+func Login(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
+	// Creates closure that captures the LongpollManager
+	return func(w http.ResponseWriter, r *http.Request) {
+		//Get username
+		user := r.URL.Query().Get("user")
 
-	//Confirm a valid user
-	if user == "" || user == "System" {
-		templates.ErrorInvalid(w, r)
-		return
+		//Confirm a valid user
+		if user == "" || user == "System" {
+			templates.ErrorInvalid(w, r)
+			return
+		}
+
+		//Username not taken
+		_, exist := existUser(user)
+		if exist {
+			templates.ErrorTaken(w, r)
+			return
+		}
+
+		//Continue if positive
+		hash := GetMD5Hash(user + GARBAGE)
+		admin := user == "Onelio" //Give Admin just to Onelio
+		//Set Cookie in Client
+		expiration := time.Now().Add(365 * 24 * time.Hour)
+		cookie := http.Cookie{Name: "hash", Value: hash, Expires: expiration}
+
+		http.SetCookie(w, &cookie)
+		templates.Login(w, r)
+		//Add user to pool
+		manager.Publish( "public_actions", Message{Action:"notice", User:"System", Text:"User " + user + " has entered"})
+		users[hash] = User{len(users), user, hash, admin}
 	}
-
-	//Username not taken
-	_, exist := existUser(user)
-	if exist {
-		templates.ErrorTaken(w, r)
-		return
-	}
-
-	//Continue if positive
-	hash := GetMD5Hash(user + GARBAGE)
-	admin := user == "Onelio" //Give Admin just to Onelio
-	//Set Cookie in Client
-	expiration := time.Now().Add(365 * 24 * time.Hour)
-	cookie := http.Cookie{Name: "hash",Value:hash,Expires:expiration}
-
-	http.SetCookie(w, &cookie)
-	templates.Login(w, r)
-	//Add user to pool
-	users[hash] = User{len(users), user, hash, admin}
 
 }
 
 //Logout
-func Logout(w http.ResponseWriter, r *http.Request) {
-	hash, _ := r.Cookie("hash")
-	//Confirm hash is valid
-	if hash == nil {
-		templates.ErrorInvalid(w, r)
-		return
-	}
-	_, ok := users[string(hash.Value)]
-	if !ok {
-		templates.ErrorInvalid(w, r)
-		return
-	}
-	//Delete local user
-	delete(users, hash.Value)
+func Logout(manager *golongpoll.LongpollManager) func(w http.ResponseWriter, r *http.Request) {
+	// Creates closure that captures the LongpollManager
+	return func(w http.ResponseWriter, r *http.Request) {
+		hash, _ := r.Cookie("hash")
+		//Confirm hash is valid
+		if hash == nil {
+			templates.ErrorInvalid(w, r)
+			return
+		}
+		user, ok := users[string(hash.Value)]
+		if !ok {
+			templates.ErrorInvalid(w, r)
+			return
+		}
+		//Delete local user
+		manager.Publish( "public_actions", Message{Action:"notice", User:"System", Text:"User " + user.name + " has left"})
+		delete(users, hash.Value)
 
-	//Continue if positive
-	templates.Logout(w, r)
+		//Continue if positive
+		templates.Logout(w, r)
+	}
 }
 
 //Chat
 func Chat(w http.ResponseWriter, r *http.Request) {
+	// Creates closure that captures the LongpollManager
 	hash, _ := r.Cookie("hash")
 	//Confirm hash is valid
 	if hash == nil {
@@ -98,6 +108,5 @@ func Chat(w http.ResponseWriter, r *http.Request) {
 
 	//Continue if positive
 	templates.Chat(w, r, value.name)
-
 }
 

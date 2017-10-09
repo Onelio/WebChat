@@ -23,7 +23,7 @@ func main() {
 		return
 	}
 	//Set Handlers for webpage
-	HandleHttpRequests()
+	HandleHttpRequests(manager)
 	//Set Handlers for api
 	HandleApiRequests(manager)
 

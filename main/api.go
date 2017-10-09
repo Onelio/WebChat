@@ -28,6 +28,8 @@ func Execute(action string, fuser User, user string, manager *golongpoll.Longpol
 		break
 	case "exit":
 		if fuser.admin {
+			message.Text = "Server shuting down by " + fuser.name
+			manager.Publish("public_actions", message)
 			os.Exit(0)
 		}
 		break
@@ -46,9 +48,10 @@ func Execute(action string, fuser User, user string, manager *golongpoll.Longpol
 	case "ban":
 		tuser, exist := existUser(user)
 		if exist && fuser.admin {
-			tuser.hash = "none"
-			users[tuser.hash] = *tuser
+			delete(users, tuser.hash)
+			users[tuser.hash + "ban"] = *tuser
 			message.Text = "User " + user + " has been banned by " + fuser.name
+			manager.Publish("public_actions", message)
 		}
 		break
 	case "kick":
