@@ -116,8 +116,10 @@ func SendMessage(manager *golongpoll.LongpollManager) func(w http.ResponseWriter
 			manager.Publish("public_actions", message)
 		} else {
 			//From
+			message.User = "To " + user
 			manager.Publish(fuser.name + "_actions", message)
 			//To
+			message.User = "From " + fuser.name
 			manager.Publish(user + "_actions", message)
 		}
 	}
